@@ -1,0 +1,138 @@
+package main
+
+import (
+	"bigHammer/internal/config"
+	"bigHammer/internal/ipc/cmd"
+	"bigHammer/internal/service/http"
+	"bigHammer/internal/service/socket"
+	"bigHammer/pkg/utils"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+)
+
+// WritePidToFile 将当前进程的PID写入指定的文件
+func WritePidToFile() {
+	err := config.LoadConfig()
+	if err != nil {
+		fmt.Println("Error loading config:", err)
+		return
+	}
+	// 获取当前进程的PID
+	mainPid := os.Getpid()
+	fmt.Printf("当前进程的PID为：%d\n", mainPid)
+	config_file_path, _ := utils.ResolvePath(config.GlobalConfig.MainPIDPath)
+	// 创建或打开PID文件
+	file, err := os.Create(config_file_path)
+	if err != nil {
+		fmt.Printf("无法创建PID文件: %s", err)
+	}
+	defer file.Close()
+
+	// 将PID写入文件
+	_, err = file.WriteString(fmt.Sprintf("%d", mainPid))
+	if err != nil {
+		fmt.Printf("无法写入PID到文件: %s", err)
+	}
+}
+
+func TerminateProcessByPIDFile(pidFilePath string) error {
+	// 读取 PID 文件
+	pidBytes, err := os.ReadFile(pidFilePath)
+	if err != nil {
+		return fmt.Errorf("读取 PID 文件时发生错误: %w", err)
+	}
+
+	// 解析 PID
+	pid := string(pidBytes)
+	if pid == "" {
+		return fmt.Errorf("PID 文件为空")
+	}
+
+	// 使用 kill 命令终止进程
+	output, errOutput, err := cmd.ExecCommand("kill", pid)
+	if err != nil {
+		return fmt.Errorf("终止进程时发生错误: %w, 输出: %s, 错误输出: %s", err, output, errOutput)
+	}
+
+	// 检查输出，确保进程已被终止
+	if output == "" && errOutput == "" {
+		return nil
+	}
+
+	return fmt.Errorf("进程终止时出现问题, 输出: %s, 错误输出: %s", output, errOutput)
+}
+func cleanup() {
+	fmt.Println("执行清理操作...")
+	err := config.LoadConfig()
+	if err != nil {
+		fmt.Println("Error loading config:", err)
+		return
+	}
+	mainPid_path, _ := utils.ResolvePath(config.GlobalConfig.MainPIDPath)
+	socket_path, _ := utils.ResolvePath(config.GlobalConfig.SocketPath)
+	bussinessPid_path, _ := utils.ResolvePath(config.GlobalConfig.BussinessPIDPath)
+
+	// 停止php
+	err = TerminateProcessByPIDFile(bussinessPid_path) // 替换为你的 PID 文件路径
+	if err != nil {
+		fmt.Println("操作失败:", err)
+		return
+	}
+	fmt.Println("成功终止进程")
+
+	// 清除配置文件
+
+	// 要删除的文件路径列表
+	filesToDelete := []string{mainPid_path, socket_path, bussinessPid_path}
+
+	// 遍历文件列表并尝试删除每个文件
+	for _, filePath := range filesToDelete {
+		err := os.Remove(filePath)
+		if err != nil {
+			fmt.Printf("无法删除文件 %s: %s\n", filePath, err)
+		} else {
+			fmt.Printf("文件 %s 已成功删除\n", filePath)
+		}
+	}
+	// 在这里执行你的清理操作，例如关闭文件、释放资源等。
+	fmt.Println("清理完成，程序已退出。")
+}
+func startup() error {
+	bussinessMainPath, err := utils.ResolvePath(config.GlobalConfig.BussinessMainPath)
+	if err != nil {
+		return fmt.Errorf("解析路径时发生错误: %w", err)
+	}
+
+	// 使用 php 命令启动进程
+	output, errOutput, err := cmd.ExecCommand("php", bussinessMainPath)
+	if err != nil {
+		return fmt.Errorf("启动进程时发生错误: %w, 输出: %s, 错误输出: %s", err, output, errOutput)
+	}
+
+	// 检查输出，确保进程已成功启动
+	if output == "" && errOutput == "" {
+		return nil
+	}
+
+	return fmt.Errorf("进程启动时出现问题, 输出: %s, 错误输出: %s", output, errOutput)
+}
+func main() {
+	// 创建一个接收信号的通道
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	// 调用函数，将PID写入文件
+	WritePidToFile()
+	go socket.StartSocketServer()
+	go http.StartHTTPServer()
+	// 业务应用程序逻辑
+	startup()
+	// 阻塞等待信号
+	sig := <-sigChan
+	fmt.Printf("接收到信号：%s\n", sig)
+	// 执行清理操作或退出程序
+	cleanup()
+	// 阻塞主进程，直到应用程序退出
+	// select {}
+}

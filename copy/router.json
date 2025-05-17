@@ -1,0 +1,14 @@
+{
+    "routes": [
+      {
+        "path": "/route1",
+        "language": "php",
+        "command": "test.php"
+      },
+      {
+        "path": "/route2",
+        "language": "python",
+        "command": "path/to/your/python_script.py"
+      }
+    ]
+  }

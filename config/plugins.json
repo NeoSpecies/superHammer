@@ -1,0 +1,10 @@
+[
+    {
+        "name": "echo",
+        "path": "bigHammer/internal/plugins/echoservice.EchoService"
+    },
+    {
+        "name": "another",
+        "path": "bigHammer/internal/plugins/anotherservice.AnotherService"
+    }
+]

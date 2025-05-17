@@ -1,0 +1,18 @@
+{
+    "database_url": "postgres://user:password@localhost/dbname",
+    "memory_db_path": "/config/data.json",
+    "mainPid_path": "/runtime/duangMain.pid",
+    "bussinessPid_path": "/runtime/duangBussiness.pid",
+    "attachment_storage": "/var/www/attachments",
+    "socket_path": "/runtime/mainSocket.sock",
+    "bussiness_socket_path": "/runtime/phpSocket.sock",
+    "router_path": "/config/router.json",
+    "plugins_path": "/config/plugins.json",
+    "bussiness_main_path": "/Develop/test.php",
+    "ports": {
+        "ipc_port": "8000",
+        "http_port": "80",
+        "websocket_port": "8081",
+        "tcp_port": "8082"
+    }
+}

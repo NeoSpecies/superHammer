@@ -1,0 +1,15 @@
+{
+    "name": "neo-species/duang-php",
+    "description": "A framework for handling socket-based communication in PHP",
+    "type": "project",
+    "require": {
+        "evenement/evenement": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Develop\\": ""
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
