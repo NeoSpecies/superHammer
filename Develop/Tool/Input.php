@@ -36,28 +36,29 @@ class Input
      * @param string $stringToSend 要发送的键值
      * @throws Exception 当Socket通信失败时抛出异常
      */
-    private function connectAndReadData($stringToSend)
-    {
-        // 获取UnixSocketReader实例，该方法假设容器已正确配置
+    private function connectAndReadData($stringToSend) {
         $reader = $this->container->get('unixSocketReader');
-        $data = json_encode([
+        $data = [
             'service' => 'input',
             'method' => 'input',
-            'params' => ['key' => $stringToSend]
-        ]);
+            'params' => ['key' => $stringToSend],
+            'id' => uniqid() // 添加唯一ID
+        ];
         try {
-            // 使用sendAndReceive方法发送数据并等待响应
             $response = $reader->sendAndReceive($data);
             $response = json_decode($response, true);
-            if($response['status']==200){
+            if(json_last_error() !== JSON_ERROR_NONE) {
+                throw new \RuntimeException("JSON解析失败: " . json_last_error_msg());
+            }
+            if($response['status'] == 200) {
                 $this->requestData = json_decode($response['data'],true);
-            }else{
+            } else {
                 $this->requestData = [];
             }
-        } catch (Exception $e) {
-            error_log("Failed to read data from Unix socket: " . $e->getMessage());
-            // 设置一个状态或者标记以便外部检查是否成功
+        } catch (\Exception $e) {
+            error_log("Socket通信错误[".date('Y-m-d H:i:s')."]: " . $e->getMessage()."\n请求数据: ".print_r($data, true));
             $this->requestData = null;
+            throw $e; // 重新抛出异常让上层处理
         }
     }
 

@@ -35,21 +35,18 @@ class SocketLifecycleHandler
 
     public function onCtrl($data)
     {
-        $uri =$this->input->getUri($data);
-        // // 获取 headers, body, route 等...
-        // $headers = $input->getHeaders();
+        $uri = $this->input->getUri($data);
         $request = $this->input->getRequest($data);
-        // $route = $input->getRoute();
-        // $timestamp = $input->getTimestamp();
-        // $clientIp = $input->getClientIp();
-        // $host = $input->getHost();
-        // $uri = $input->getUri();
-        // $url = $input->getUrl();
-        // var_dump($request);
+        // 添加调试日志
+        error_log("Trying to match route for URI: " . $uri);
+        
         $route = $this->router->match($uri);
         if ($route) {
-            return $this->router->dispatch($route,$request);
+            error_log("Route matched: " . print_r($route, true));
+            return $this->router->dispatch($route, $request);
         }
+        
+        error_log("No route found for URI: " . $uri);
         return "No matching route found.";
     }
 

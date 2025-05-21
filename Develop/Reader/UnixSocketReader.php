@@ -31,16 +31,8 @@ class UnixSocketReader {
 
     public function getConnection() {
         foreach ($this->pool as $key => $socket) {
-            if (is_resource($socket) && !socket_get_option($socket, SOL_SOCKET, SO_ERROR)) {
+            if($this->isConnectionAlive($socket)) {
                 return $socket;
-            } else {
-                // Close the invalid socket connection
-                if (is_resource($socket)) {
-                    socket_close($socket);
-                }
-                // Try to recreate the socket if it is not valid anymore
-                $this->pool[$key] = $this->createConnection();
-                return $this->pool[$key];
             }
         }
         // If all sockets are busy, create a new one
@@ -56,18 +48,38 @@ class UnixSocketReader {
     public function sendAndReceive($message) {
         try {
             $socket = $this->getConnection();
-            if (socket_write($socket, $message, strlen($message)) === false) {
-                throw new \RuntimeException("Failed to write to socket: " . socket_strerror(socket_last_error($socket)));
+            
+            // 添加二进制协议头封装
+            $version = pack('n', 0x0101); // 协议版本v1.1
+            $msgType = pack('C', 0x01);  // 同步消息类型
+            $payload = json_encode($message);
+            $payloadLen = pack('N', strlen($payload));
+            
+            $fullMessage = $version . $msgType . $payloadLen . $payload;
+            
+            if (socket_write($socket, $fullMessage, strlen($fullMessage)) === false) {
+                throw new \RuntimeException("消息发送失败: " . socket_strerror(socket_last_error($socket)));
             }
-            $response = socket_read($socket, 2048);
+            
+            // 读取响应头
+            $header = socket_read($socket, 7);
+            if (strlen($header) !== 7) {
+                throw new \RuntimeException("无效响应头");
+            }
+            
+            // 解析响应头
+            list($version, $msgType, $payloadLen) = array_values(unpack('nversion/CmsgType/NpayloadLen', $header));
+            
+            // 读取响应体
+            $response = socket_read($socket, $payloadLen);
             if ($response === false) {
-                throw new \RuntimeException("Failed to read from socket: " . socket_strerror(socket_last_error($socket)));
+                throw new \RuntimeException("响应读取失败: " . socket_strerror(socket_last_error($socket)));
             }
+            
             $this->release($socket);
             return $response;
         } catch (\Exception $e) {
-            // Handle exception by logging or rethrowing
-            error_log($e->getMessage());
+            error_log("Socket通信错误: " . $e->getMessage());
             throw $e;
         }
     }
@@ -78,5 +90,10 @@ class UnixSocketReader {
                 socket_close($socket);
             }
         }
+    }
+
+    private function isConnectionAlive($socket) {
+        return is_resource($socket) && 
+               @socket_get_option($socket, SOL_SOCKET, SO_ERROR) === 0;
     }
 }
