@@ -35,7 +35,9 @@ $container->set('socketFile', $socketFile);           // 注册Socket文件路�
 $container->set('pidFile', $pidFile);                 // 注册PID文件路径
 $container->set('socketMainFile', $socketMainFile);   // 注册主Socket文件路径
 $container->set('routesFile', $routesFile);           // 注册路由配置文件路径
-
+// 在容器初始化后添加
+$container->set('socketPoolSize', 10);
+$container->set('maxPoolSize', 50);
 // 注册Unix Socket读取器服务
 $container->set('unixSocketReader', function (Container $container) {
     return new UnixSocketReader($container);

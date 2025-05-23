@@ -7,14 +7,66 @@ class UnixSocketReader {
     protected $socketFile;
     protected $poolSize;
     private $container;
+    protected $idlePool = [];
+    protected $activePool = [];
+    protected $maxPoolSize = 20;
+    protected $idleTimeout = 300; // 秒
 
     public function __construct($container) {
         $this->socketFile = $container->get('socketMainFile');
-        $this->poolSize = 5;
-
+        $this->poolSize = $container->get('socketPoolSize') ?? 5; // 移除has检查
+        $this->maxPoolSize = $container->get('maxPoolSize') ?? 20;
+        
         for ($i = 0; $i < $this->poolSize; $i++) {
-            $this->pool[$i] = $this->createConnection();
+            $this->idlePool[] = $this->createConnection();
         }
+    }
+
+    public function getConnection() {
+        // 优先从空闲池获取
+        while (!empty($this->idlePool)) {
+            $socket = array_pop($this->idlePool);
+            if ($this->isConnectionAlive($socket)) {
+                $this->activePool[] = $socket;
+                return $socket;
+            }
+            socket_close($socket);
+        }
+        
+        // 创建新连接（不超过最大限制）
+        if (count($this->activePool) + count($this->idlePool) < $this->maxPoolSize) {
+            $newSocket = $this->createConnection();
+            $this->activePool[] = $newSocket;
+            return $newSocket;
+        }
+        
+        throw new \RuntimeException("连接池已达最大限制 ({$this->maxPoolSize})");
+    }
+
+    public function release($socket) {
+        $index = array_search($socket, $this->activePool, true);
+        if ($index !== false) {
+            array_splice($this->activePool, $index, 1);
+            
+            if ($this->isConnectionAlive($socket)) {
+                // 重置连接状态并设置最后使用时间
+                $socket->lastUsed = time();
+                $this->idlePool[] = $socket;
+            } else {
+                socket_close($socket);
+            }
+        }
+    }
+
+    private function cleanupIdleConnections() {
+        $now = time();
+        foreach ($this->idlePool as $i => $socket) {
+            if ($now - $socket->lastUsed > $this->idleTimeout) {
+                socket_close($socket);
+                unset($this->idlePool[$i]);
+            }
+        }
+        $this->idlePool = array_values($this->idlePool);
     }
 
     protected function createConnection() {
@@ -29,21 +81,6 @@ class UnixSocketReader {
         return $socket;
     }
 
-    public function getConnection() {
-        foreach ($this->pool as $key => $socket) {
-            if($this->isConnectionAlive($socket)) {
-                return $socket;
-            }
-        }
-        // If all sockets are busy, create a new one
-        $newSocket = $this->createConnection();
-        $this->pool[] = $newSocket;
-        return $newSocket;
-    }
-
-    public function release($socket) {
-        // For now, do nothing. Add back to pool or recreate if needed.
-    }
 
     public function sendAndReceive($message) {
         try {
