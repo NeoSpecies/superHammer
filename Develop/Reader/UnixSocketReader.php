@@ -49,7 +49,7 @@ class UnixSocketReader {
         try {
             $socket = $this->getConnection();
             
-            // 添加二进制协议头封装（已正确使用v1.1）
+            // 修改协议头版本为v1.1（原为0x0100）
             $version = pack('n', 0x0101); // 协议版本v1.1
             $msgType = pack('C', 0x01);  // 同步消息类型
             $payload = json_encode($message);
@@ -61,13 +61,13 @@ class UnixSocketReader {
                 throw new \RuntimeException("消息发送失败: " . socket_strerror(socket_last_error($socket)));
             }
             
-            // 读取响应头
+            // 读取响应头时保持v1.1版本校验
             $header = socket_read($socket, 7);
             if (strlen($header) !== 7) {
                 throw new \RuntimeException("无效响应头");
             }
             
-            // 解析响应头
+            // 更新版本号解析注释
             list($version, $msgType, $payloadLen) = array_values(unpack('nversion/CmsgType/NpayloadLen', $header));
             
             // 读取响应体
