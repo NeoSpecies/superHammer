@@ -9,10 +9,14 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 const (
-	HeaderSize = 7 // 2+1+4 bytes
+	HeaderSize     = 7               // 2+1+4 bytes
 	MaxPayloadSize = 4 * 1024 * 1024 // 4MB
 )
 
@@ -20,6 +24,39 @@ type ProtocolHeader struct {
 	Version uint16
 	MsgType byte
 	Length  uint32
+}
+
+var (
+	requestMap = make(map[string]net.Conn)  // 新增请求映射表
+	mapMutex   sync.RWMutex                 // 新增互斥锁
+	asyncPending = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "ipc_async_pending",
+		Help: "当前未完成的异步请求数量",
+	})
+)
+
+// 新增异步请求结构体
+type AsyncRequest struct {
+	ID      string
+	Payload json.RawMessage
+}
+
+func handleAsyncRequest(version uint16, payload []byte, conn net.Conn) {
+	var asyncReq AsyncRequest
+	if err := json.Unmarshal(payload, &asyncReq); err != nil {
+		log.Printf("解析异步请求失败: %v", err)
+		return
+	}
+
+	mapMutex.Lock()
+	defer mapMutex.Unlock()
+
+	if _, exists := requestMap[asyncReq.ID]; exists {
+		log.Printf("重复的异步请求ID: %s", asyncReq.ID)
+		return
+	}
+	asyncPending.Inc()
+	defer asyncPending.Dec()
 }
 
 func HandleSocket(conn net.Conn) {

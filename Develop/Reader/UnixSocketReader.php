@@ -85,6 +85,11 @@ class UnixSocketReader {
     }
 
     public function __destruct() {
+        // 增加泄漏告警
+        $leakCount = count($this->pool);
+        if ($leakCount > 0) {
+            error_log("连接池泄漏警告: 剩余{$leakCount}个未释放连接");
+        }
         foreach ($this->pool as $socket) {
             if (is_resource($socket)) {
                 socket_close($socket);
@@ -93,6 +98,11 @@ class UnixSocketReader {
     }
 
     private function isConnectionAlive($socket) {
+        // 增加心跳发送逻辑
+        $heartbeat = pack('nCN', 0x0100, 0x02, 0); // v1.0心跳协议
+        if (!@socket_write($socket, $heartbeat, 7)) {
+            return false;
+        }
         return is_resource($socket) && 
                @socket_get_option($socket, SOL_SOCKET, SO_ERROR) === 0;
     }
