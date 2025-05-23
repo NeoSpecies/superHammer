@@ -49,7 +49,7 @@ class UnixSocketReader {
         try {
             $socket = $this->getConnection();
             
-            // 添加二进制协议头封装
+            // 添加二进制协议头封装（已正确使用v1.1）
             $version = pack('n', 0x0101); // 协议版本v1.1
             $msgType = pack('C', 0x01);  // 同步消息类型
             $payload = json_encode($message);
@@ -99,7 +99,7 @@ class UnixSocketReader {
 
     private function isConnectionAlive($socket) {
         // 增加心跳发送逻辑
-        $heartbeat = pack('nCN', 0x0100, 0x02, 0); // v1.0心跳协议
+        $heartbeat = pack('nCN', 0x0101, 0x02, 0); // v1.1心跳协议
         if (!@socket_write($socket, $heartbeat, 7)) {
             return false;
         }

@@ -13,6 +13,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"time" // 补全缺失的time包
 )
 
 const (
@@ -27,8 +29,8 @@ type ProtocolHeader struct {
 }
 
 var (
-	requestMap = make(map[string]net.Conn)  // 新增请求映射表
-	mapMutex   sync.RWMutex                 // 新增互斥锁
+	requestMap   = make(map[string]net.Conn) // 新增请求映射表
+	mapMutex     sync.RWMutex                // 新增互斥锁
 	asyncPending = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "ipc_async_pending",
 		Help: "当前未完成的异步请求数量",
@@ -42,21 +44,34 @@ type AsyncRequest struct {
 }
 
 func handleAsyncRequest(version uint16, payload []byte, conn net.Conn) {
+	// 修复顺序：先解析请求体
 	var asyncReq AsyncRequest
 	if err := json.Unmarshal(payload, &asyncReq); err != nil {
 		log.Printf("解析异步请求失败: %v", err)
 		return
 	}
 
+	// 合并互斥锁操作
 	mapMutex.Lock()
 	defer mapMutex.Unlock()
+
+	// 设置超时必须放在锁操作之后
+	conn.SetDeadline(time.Now().Add(30 * time.Second))
 
 	if _, exists := requestMap[asyncReq.ID]; exists {
 		log.Printf("重复的异步请求ID: %s", asyncReq.ID)
 		return
 	}
+
+	// 正确注册连接
+	requestMap[asyncReq.ID] = conn
 	asyncPending.Inc()
-	defer asyncPending.Dec()
+
+	defer func() {
+		delete(requestMap, asyncReq.ID)
+		asyncPending.Dec()
+		conn.Close()
+	}()
 }
 
 func HandleSocket(conn net.Conn) {
