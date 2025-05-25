@@ -24,20 +24,33 @@ class SocketLifecycleHandler
         echo "Server stopped.\n";
     }
 
-    public function onDataReceived(&$data)
-    {
-        echo "Data received: " . $data . "\n";
-        // 使用已经注入的 reader 实例
-        // $this->input
-        // 进行数据处理...
+    public function onDataReceived(&$data) {
+        // echo "Data received: " . $data . "\n";
+        $data = substr($data, 7);
+        // 解析原始数据为数组（假设数据是JSON格式）
+        $this->receivedData = json_decode($data, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log("数据解析失败: " . json_last_error_msg());
+            $this->receivedData = [];
+        }
+        
         return true;
     }
+    
 
-    public function onCtrl($data)
-    {
-        $uri = $this->input->getUri($data);
-        $request = $this->input->getRequest($data);
-        // 添加调试日志
+    public function onCtrl($data) {
+        
+        // 直接使用 onDataReceived 中存储的解析后数据
+        if (empty($this->receivedData)) {
+            error_log("未接收到有效请求数据");
+            return "无效请求";
+        }
+        
+        // 从已解析的数据中提取URI
+        $uri = $this->receivedData['uri'] ?? '';
+        $request = $this->receivedData;
+        
         error_log("Trying to match route for URI: " . $uri);
         
         $route = $this->router->match($uri);

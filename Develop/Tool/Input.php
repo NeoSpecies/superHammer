@@ -37,6 +37,7 @@ class Input
      * @throws Exception 当Socket通信失败时抛出异常
      */
     private function connectAndReadData($stringToSend) {
+        
         $reader = $this->container->get('unixSocketReader');
         $data = [
             'service' => 'input',
@@ -46,11 +47,14 @@ class Input
         ];
         try {
             $response = $reader->sendAndReceive($data);
+            
             $response = json_decode($response, true);
             if(json_last_error() !== JSON_ERROR_NONE) {
                 throw new \RuntimeException("JSON解析失败: " . json_last_error_msg());
             }
+            
             if($response['status'] == 200) {
+                
                 $this->requestData = json_decode($response['data'],true);
             } else {
                 $this->requestData = [];
@@ -140,10 +144,10 @@ class Input
      * @param string $stringToSend 要发送的键值
      * @return string|null 请求URI
      */
-    public function getUri($stringToSend)
-    {
-        $this->connectAndReadData($stringToSend);
-        return $this->requestData['uri'] ?? null;
+    // 示例：直接返回传入的完整数据（需根据实际业务调整）
+    public function getUri($data) {
+        $requestData = json_decode($data, true);
+        return $requestData['uri'] ?? null;
     }
 
     /**

@@ -15,6 +15,7 @@ import (
 func (r *Router) HandleHTTP(w http.ResponseWriter, req *http.Request) {
 	log.Printf("开始处理请求: %s %s", req.Method, req.URL.Path)
 	requestStartTime := time.Now()
+
 	// 加载配置
 	err := config.LoadConfig()
 	if err != nil {
@@ -22,14 +23,6 @@ func (r *Router) HandleHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	log.Println("进入请求")
-
-	// 生成UUID
-	uuid, err := utils.GenerateUUID()
-	if err != nil {
-		fmt.Printf("Error generating UUID: %v\n", err)
-		return
-	}
-
 	// 读取请求体
 	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -56,10 +49,22 @@ func (r *Router) HandleHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	fullURL := fmt.Sprintf("%s://%s%s", scheme, host, req.RequestURI)
 
+	// 尝试解析请求体为JSON
+	var bodyData interface{}
+	if len(bodyBytes) > 0 {
+		// 尝试解析为JSON
+		if err := json.Unmarshal(bodyBytes, &bodyData); err != nil {
+			// 解析失败，作为普通字符串处理
+			bodyData = string(bodyBytes)
+		}
+	} else {
+		bodyData = nil
+	}
+
 	// 将请求信息组装到map中
 	requestData := map[string]interface{}{
 		"headers":   req.Header,
-		"body":      string(bodyBytes),
+		"body":      bodyData, // 这里存储解析后的JSON对象或原始字符串
 		"route":     req.URL.Path,
 		"timestamp": requestTimestamp.Format(time.RFC3339Nano),
 		"client_ip": clientIP,
@@ -67,19 +72,6 @@ func (r *Router) HandleHTTP(w http.ResponseWriter, req *http.Request) {
 		"uri":       uri,
 		"url":       fullURL,
 	}
-
-	// JSON序列化请求数据
-	requestDataJSON, err := json.Marshal(requestData)
-	if err != nil {
-		log.Println("Error marshalling request data:", err)
-		http.Error(w, "内部服务器错误", http.StatusInternalServerError)
-		return
-	}
-
-	// 存储到内存数据库
-	r.DB.Put(uuid, string(requestDataJSON))
-	// 内存数据库持久化到文件，开启后大幅降低系统性能
-	r.DB.Persist()
 
 	// 获取请求路径
 	path := req.URL.Path
@@ -99,14 +91,11 @@ func (r *Router) HandleHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// 记录请求到达时间
-	// requestStartTime = time.Now()
-
 	// 执行Socket通信
 	configFilePath, _ := utils.ResolvePath(config.GlobalConfig.BussinessSocketPath)
-	output, err := ipc.ExecuteSocket(route.Command, configFilePath, uuid)
+	output, _, err := ipc.TransmitIPC(false, route.Command, requestData, configFilePath)
 	if err != nil {
-		log.Println("执行PHP命令时出错:", err)
+		log.Println("执行Socket通信失败:", err)
 		http.Error(w, "内部服务器错误", http.StatusInternalServerError)
 		return
 	}

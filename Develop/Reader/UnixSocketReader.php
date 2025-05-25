@@ -7,10 +7,10 @@ class UnixSocketReader {
     protected $socketFile;
     protected $poolSize;
     private $container;
-    protected $idlePool = [];
     protected $activePool = [];
     protected $maxPoolSize = 20;
     protected $idleTimeout = 300; // 秒
+    protected $idlePool = []; // 格式改为[[socket资源, lastUsed时间戳], ...]
 
     public function __construct($container) {
         $this->socketFile = $container->get('socketMainFile');
@@ -44,14 +44,13 @@ class UnixSocketReader {
     }
 
     public function release($socket) {
-        $index = array_search($socket, $this->activePool, true);
+        $index = array_search($socket, array_column($this->activePool, 0), true);
         if ($index !== false) {
-            array_splice($this->activePool, $index, 1);
+            list($socket) = array_splice($this->activePool, $index, 1);
             
             if ($this->isConnectionAlive($socket)) {
-                // 重置连接状态并设置最后使用时间
-                $socket->lastUsed = time();
-                $this->idlePool[] = $socket;
+                // 存储连接时记录当前时间戳
+                $this->idlePool[] = [$socket, time()];
             } else {
                 socket_close($socket);
             }
@@ -60,8 +59,9 @@ class UnixSocketReader {
 
     private function cleanupIdleConnections() {
         $now = time();
-        foreach ($this->idlePool as $i => $socket) {
-            if ($now - $socket->lastUsed > $this->idleTimeout) {
+        foreach ($this->idlePool as $i => $item) {
+            list($socket, $lastUsed) = $item;
+            if ($now - $lastUsed > $this->idleTimeout) {
                 socket_close($socket);
                 unset($this->idlePool[$i]);
             }
@@ -109,6 +109,7 @@ class UnixSocketReader {
             
             // 读取响应体
             $response = socket_read($socket, $payloadLen);
+            
             if ($response === false) {
                 throw new \RuntimeException("响应读取失败: " . socket_strerror(socket_last_error($socket)));
             }
@@ -135,12 +136,30 @@ class UnixSocketReader {
     }
 
     private function isConnectionAlive($socket) {
-        // 增加心跳发送逻辑
-        $heartbeat = pack('nCN', 0x0101, 0x02, 0); // v1.1心跳协议
+        // 使用v1.1心跳协议（与Go端同步）
+        $heartbeat = pack('nCN', 0x0101, 0x02, 0); // 版本v1.1，类型0x02（心跳），负载长度0
         if (!@socket_write($socket, $heartbeat, 7)) {
             return false;
         }
-        return is_resource($socket) && 
-               @socket_get_option($socket, SOL_SOCKET, SO_ERROR) === 0;
+        // 增加心跳响应验证（可选，根据Go端是否返回心跳确认）
+        $response = @socket_read($socket, 7); // 读取心跳响应头
+        return $response !== false && is_resource($socket);
+    }
+    
+    protected function asyncReadLoop($socket) {
+        while (true) {
+            // ...
+            
+            // 每轮循环清理过期回调（每5秒执行一次）
+            if (time() % 5 === 0) {
+                $now = time();
+                foreach ($this->asyncCallbacks as $id => $callbackData) {
+                    if ($now > $callbackData['expire']) {
+                        unset($this->asyncCallbacks[$id]);
+                        error_log("异步回调ID={$id}超时未响应");
+                    }
+                }
+            }
+        }
     }
 }
