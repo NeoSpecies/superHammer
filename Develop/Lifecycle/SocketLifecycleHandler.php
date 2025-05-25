@@ -48,14 +48,14 @@ class SocketLifecycleHandler
         }
         
         // 从已解析的数据中提取URI
-        $uri = $this->receivedData['uri'] ?? '';
+        $uri = $this->receivedData['params']['uri'] ?? '';
         $request = $this->receivedData;
         
-        error_log("Trying to match route for URI: " . $uri);
-        
+        // error_log("Trying to match route for URI: " . $uri);
         $route = $this->router->match($uri);
+        
         if ($route) {
-            error_log("Route matched: " . print_r($route, true));
+            // error_log("Route matched: " . print_r($route, true));
             return $this->router->dispatch($route, $request);
         }
         
@@ -65,7 +65,15 @@ class SocketLifecycleHandler
 
     public function onDataSent(&$data)
     {
-        echo "Data sent: " . $data . "\n";
-        // 对控制器的处理结果进行数据加工或者直接放行
+        // 构造协议头（版本v1.1，响应类型0x05）
+        $version = pack('n', 0x0101);
+        $msgType = pack('C', 0x05); // 响应类型
+        $payloadLen = pack('N', strlen($data));
+        
+        // 组合协议头和数据
+        $data = $version . $msgType . $payloadLen . $data;
+        
+        // 添加调试日志（正式环境可移除）
+        error_log("完整响应数据长度：" . strlen($data));
     }
 }

@@ -26,9 +26,10 @@ class SampleController
      * @param string $uri 请求URI
      * @return string JSON格式的响应数据
      */
-    public function greet($body, $uri)
+    public function greet($params, $uri)
     {
-        $data = ["body"=>json_decode($body,true),"uri"=>$uri,"msg"=>"Hello, welcome to our service!"];
+        // var_dump($params['body']);
+        $data = ["body"=>$params['body'],"uri"=>$uri,"msg"=>"Hello, welcome to our service!"];
         return json_encode($data);
     }
 }

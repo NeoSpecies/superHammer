@@ -42,7 +42,7 @@ class Router
             $method = new ReflectionMethod($className, $methodName);
             $methodParams = $method->getParameters();
             $args = [];
-
+            // var_dump($methodParams);
             foreach ($methodParams as $param) {
                 // 获取参数名称
                 $paramName = $param->getName();

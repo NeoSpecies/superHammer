@@ -32,8 +32,19 @@ func TransmitIPC(isAsync bool, method string, params interface{}, socketPath str
 	if err != nil {
 		return nil, "", fmt.Errorf("连接PHP Socket失败: %v", err)
 	}
-	defer conn.Close()
-
+	
+	// 修改连接关闭策略
+	if isAsync {
+		// 异步连接保持开启，由回调处理关闭
+		defer func() {
+			if recover() != nil {
+				conn.Close()
+			}
+		}()
+	} else {
+		defer conn.Close() // 同步请求保持原有逻辑
+	}
+	
 	var payload []byte
 	var msgType byte
 	var requestID string
@@ -71,7 +82,6 @@ func TransmitIPC(isAsync bool, method string, params interface{}, socketPath str
 	binary.BigEndian.PutUint16(header[:2], ProtocolVersion)
 	header[2] = msgType
 	binary.BigEndian.PutUint32(header[3:7], uint32(len(payload)))
-	fmt.Println(string(append(header, payload...)))
 	// 发送完整消息（头+负载）
 	_, err = conn.Write(append(header, payload...))
 	if err != nil {
@@ -100,7 +110,7 @@ func readSyncResponse(conn net.Conn) ([]byte, string, error) {
 	version := binary.BigEndian.Uint16(headerBuf[:2])
 	msgType := headerBuf[2]
 	payloadLen := binary.BigEndian.Uint32(headerBuf[3:7])
-
+	fmt.Println(version, ProtocolVersion)
 	// 校验协议版本
 	if version != ProtocolVersion {
 		return nil, "", fmt.Errorf("不支持的响应协议版本: %d", version)

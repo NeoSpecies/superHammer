@@ -85,10 +85,18 @@ class UnixSocketReader {
     public function sendAndReceive($message) {
         try {
             $socket = $this->getConnection();
-            
             // 修改协议头版本为v1.1（原为0x0100）
-            $version = pack('n', 0x0101); // 协议版本v1.1
-            $msgType = pack('C', 0x01);  // 同步消息类型
+            // 修复协议头构造方式（必须使用二进制打包）
+            $version = pack('n', 0x0101); // 使用n格式打包2字节大端序
+            $msgType = pack('C', 0x04);   // 使用C格式打包1字节消息类型
+            $payloadLen = pack('N', strlen($payload)); // 使用N格式打包4字节大端序长度
+            
+            // 组合完整的协议头（共7字节）
+            $fullHeader = $version . $msgType . $payloadLen;
+            
+            // 发送完整数据（头+负载）
+            $fullMessage = $fullHeader . $payload;
+            socket_write($socket, $fullMessage, strlen($fullMessage));
             $payload = json_encode($message);
             $payloadLen = pack('N', strlen($payload));
             
